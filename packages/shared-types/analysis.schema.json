@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codebase-agent.dev/schemas/analysis.json",
+  "title": "AnalysisResult",
+  "type": "object",
+  "required": ["status", "summary", "hotspots", "module_graph_url"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["queued", "running", "completed", "failed"]
+    },
+    "summary": { "type": "string" },
+    "hotspots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "reason"],
+        "properties": {
+          "file": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "module_graph_url": { "type": "string" }
+  }
+}

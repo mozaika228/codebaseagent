@@ -1,0 +1,2 @@
+repo,task,ci_pass,review_accepted,latency_seconds,cost_usd,hallucination_count,regression
+example/repo,extract-validation,yes,no,38.5,0.84,0,no
