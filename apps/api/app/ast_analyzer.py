@@ -133,6 +133,17 @@ def _analyze_ts_js(file_path: Path, parser, call_counter: Counter[str]) -> tuple
     return imports, complexity
 
 
+def _safe_get_parser(language: str):
+    if not get_parser:
+        return None
+    try:
+        return get_parser(language)
+    except Exception:
+        # Some CI environments may install incompatible tree-sitter bindings.
+        # Fallback to Python-only AST mode instead of failing the full analysis.
+        return None
+
+
 def analyze_repository(repo_path: str, analysis_id: str) -> dict[str, object]:
     repo_root = Path(repo_path)
     code_files = _iter_code_files(repo_root)
@@ -142,8 +153,8 @@ def analyze_repository(repo_path: str, analysis_id: str) -> dict[str, object]:
     dependency_edges: dict[str, set[str]] = defaultdict(set)
     file_scores: list[tuple[str, int]] = []
     call_counter: Counter[str] = Counter()
-    js_parser = get_parser("javascript") if get_parser else None
-    ts_parser = get_parser("typescript") if get_parser else None
+    js_parser = _safe_get_parser("javascript")
+    ts_parser = _safe_get_parser("typescript")
 
     for file_path in code_files:
         rel = file_path.relative_to(repo_root).as_posix()
