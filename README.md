@@ -58,6 +58,23 @@ pnpm install
 pnpm dev
 ```
 
+## Tests
+
+```bash
+cd apps/api
+pip install -r requirements.txt
+pytest tests -q
+```
+
+## CI
+
+GitHub Actions workflow is at `.github/workflows/ci.yml`.
+It runs:
+
+- API tests (`pytest`)
+- Web typecheck (`tsc --noEmit`)
+- Web production build (`next build`)
+
 ## MVP API Contract
 
 - `POST /repos/import`
