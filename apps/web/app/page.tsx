@@ -1,19 +1,26 @@
+"use client"
+
 import ExperiencePanels from "../components/ExperiencePanels"
+import LanguageSwitcher from "../components/LanguageSwitcher"
 import RunPanel from "../components/RunPanel"
+import { useI18n } from "../components/I18nProvider"
 
 export default function HomePage() {
+  const { t } = useI18n()
+
   return (
     <main className="container stack">
       <section className="card">
-        <h1>Codebase Agent</h1>
-        <p>
-          Analyze repository architecture, compare model answers, and generate safe draft PRs with test gates.
-        </p>
+        <div className="hero-head">
+          <h1>{t("app.title")}</h1>
+          <LanguageSwitcher />
+        </div>
+        <p>{t("app.subtitle")}</p>
         <ul>
-          <li>Architect summary + hotspots</li>
-          <li>RAG-style chat and doc ingestion workspace</li>
-          <li>Scoped refactor proposal and run trace</li>
-          <li>Patch + test-gated PR draft</li>
+          <li>{t("hero.item1")}</li>
+          <li>{t("hero.item2")}</li>
+          <li>{t("hero.item3")}</li>
+          <li>{t("hero.item4")}</li>
         </ul>
       </section>
       <section className="grid">

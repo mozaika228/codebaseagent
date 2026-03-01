@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 
+import { useI18n } from "./I18nProvider"
+
 type ImportResponse = {
   repo_id: string
   commit_sha: string
@@ -38,6 +40,7 @@ type PrResponse = {
 }
 
 export default function RunPanel() {
+  const { t } = useI18n()
   const [repoUrl, setRepoUrl] = useState("https://github.com/org/repo")
   const [branch, setBranch] = useState("main")
   const [repoId, setRepoId] = useState("")
@@ -46,7 +49,8 @@ export default function RunPanel() {
   const [proposalId, setProposalId] = useState("")
   const [runId, setRunId] = useState("")
   const [headBranch, setHeadBranch] = useState("")
-  const [status, setStatus] = useState("idle")
+  const [statusKey, setStatusKey] = useState("status.idle")
+  const [statusDetail, setStatusDetail] = useState("")
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null)
   const [proposal, setProposal] = useState<ProposalResponse | null>(null)
   const [prResult, setPrResult] = useState<PrResponse | null>(null)
@@ -54,85 +58,95 @@ export default function RunPanel() {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000"
 
   async function handleImport() {
-    setStatus("importing repository")
+    setStatusKey("status.importing")
+    setStatusDetail("")
     const res = await fetch(`${apiBase}/repos/import`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ repo_url: repoUrl, branch })
     })
     if (!res.ok) {
-      setStatus(`import failed: ${await res.text()}`)
+      setStatusKey("status.importing")
+      setStatusDetail(`error: ${await res.text()}`)
       return
     }
     const data = (await res.json()) as ImportResponse
     setRepoId(data.repo_id)
     setCommitSha(data.commit_sha)
-    setStatus(`repo imported: ${data.repo_id}`)
+    setStatusKey("status.importing")
+    setStatusDetail(data.repo_id)
   }
 
   async function handleAnalysis() {
     if (!repoId) return
-    setStatus("analysis running")
+    setStatusKey("status.analysisRunning")
+    setStatusDetail("")
     const res = await fetch(`${apiBase}/analysis/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ repo_id: repoId, commit_sha: "HEAD" })
     })
     if (!res.ok) {
-      setStatus(`analysis start failed: ${await res.text()}`)
+      setStatusDetail(`error: ${await res.text()}`)
       return
     }
     const data = (await res.json()) as AnalysisResponse
     setAnalysisId(data.analysis_id)
     const detailRes = await fetch(`${apiBase}/analysis/${data.analysis_id}`)
     if (!detailRes.ok) {
-      setStatus(`analysis fetch failed: ${await detailRes.text()}`)
+      setStatusDetail(`error: ${await detailRes.text()}`)
       return
     }
     const detail = (await detailRes.json()) as AnalysisResult
     setAnalysis(detail)
-    setStatus(`analysis completed: ${data.analysis_id}`)
+    setStatusKey("status.analysisDone")
+    setStatusDetail(data.analysis_id)
   }
 
   async function handleProposal() {
     if (!analysisId) return
-    setStatus("generating proposal")
+    setStatusKey("status.proposalGenerating")
+    setStatusDetail("")
     const res = await fetch(`${apiBase}/refactors/propose`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ analysis_id: analysisId, scope: ["src/**"], max_changes: 5 })
     })
     if (!res.ok) {
-      setStatus(`proposal failed: ${await res.text()}`)
+      setStatusDetail(`error: ${await res.text()}`)
       return
     }
     const data = (await res.json()) as ProposalResponse
     setProposalId(data.proposal_id)
     setHeadBranch(`codebase-agent/${data.proposal_id}`)
     setProposal(data)
-    setStatus(`proposal created: ${data.proposal_id}`)
+    setStatusKey("status.proposalDone")
+    setStatusDetail(data.proposal_id)
   }
 
   async function handleApply() {
     if (!proposalId) return
-    setStatus("applying refactor")
+    setStatusKey("status.applyRunning")
+    setStatusDetail("")
     const res = await fetch(`${apiBase}/refactors/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ proposal_id: proposalId, run_tests: true })
     })
     if (!res.ok) {
-      setStatus(`apply failed: ${await res.text()}`)
+      setStatusDetail(`error: ${await res.text()}`)
       return
     }
     const data = (await res.json()) as ApplyResponse
     setRunId(data.run_id)
-    setStatus(`refactor applied: ${data.run_id}`)
+    setStatusKey("status.applyDone")
+    setStatusDetail(data.run_id)
   }
 
   async function handlePrDraft() {
     if (!runId || !repoId || !headBranch) return
-    setStatus("creating pr draft")
+    setStatusKey("status.prRunning")
+    setStatusDetail("")
     const res = await fetch(`${apiBase}/github/pr`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -146,39 +160,40 @@ export default function RunPanel() {
       })
     })
     if (!res.ok) {
-      setStatus(`pr draft failed: ${await res.text()}`)
+      setStatusDetail(`error: ${await res.text()}`)
       return
     }
     const data = (await res.json()) as PrResponse
     setPrResult(data)
-    setStatus(`pr status: ${data.status}`)
+    setStatusKey("status.prDone")
+    setStatusDetail(data.status)
   }
 
   return (
     <div className="card">
-      <h2>MVP Runner</h2>
-      <p>Run full flow: import, analysis, proposal, apply, and PR draft.</p>
+      <h2>{t("runner.title")}</h2>
+      <p>{t("runner.subtitle")}</p>
       <div style={{ display: "grid", gap: 12 }}>
-        <input className="input" value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="Repository URL" />
-        <input className="input" value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="Branch" />
-        <button className="button" onClick={handleImport}>Import Repository</button>
-        <button className="button" onClick={handleAnalysis} disabled={!repoId}>Run Analysis</button>
-        <button className="button" onClick={handleProposal} disabled={!analysisId}>Generate Refactor Proposal</button>
-        <button className="button" onClick={handleApply} disabled={!proposalId}>Apply Refactor</button>
-        <button className="button" onClick={handlePrDraft} disabled={!runId}>Create PR Draft</button>
+        <input className="input" value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder={t("runner.repoUrl")} />
+        <input className="input" value={branch} onChange={(e) => setBranch(e.target.value)} placeholder={t("runner.branch")} />
+        <button className="button" onClick={handleImport}>{t("runner.import")}</button>
+        <button className="button" onClick={handleAnalysis} disabled={!repoId}>{t("runner.analysis")}</button>
+        <button className="button" onClick={handleProposal} disabled={!analysisId}>{t("runner.propose")}</button>
+        <button className="button" onClick={handleApply} disabled={!proposalId}>{t("runner.apply")}</button>
+        <button className="button" onClick={handlePrDraft} disabled={!runId}>{t("runner.pr")}</button>
       </div>
-      <p><strong>Status:</strong> {status}</p>
-      <p><strong>Repo ID:</strong> {repoId || "-"}</p>
-      <p><strong>Commit SHA:</strong> {commitSha || "-"}</p>
-      <p><strong>Analysis ID:</strong> {analysisId || "-"}</p>
-      <p><strong>Proposal ID:</strong> {proposalId || "-"}</p>
-      <p><strong>Run ID:</strong> {runId || "-"}</p>
-      <p><strong>Head Branch:</strong> {headBranch || "-"}</p>
+      <p><strong>{t("runner.status")}:</strong> {t(statusKey)}{statusDetail ? `: ${statusDetail}` : ""}</p>
+      <p><strong>{t("runner.repoId")}:</strong> {repoId || "-"}</p>
+      <p><strong>{t("runner.commit")}:</strong> {commitSha || "-"}</p>
+      <p><strong>{t("runner.analysisId")}:</strong> {analysisId || "-"}</p>
+      <p><strong>{t("runner.proposalId")}:</strong> {proposalId || "-"}</p>
+      <p><strong>{t("runner.runId")}:</strong> {runId || "-"}</p>
+      <p><strong>{t("runner.headBranch")}:</strong> {headBranch || "-"}</p>
       {analysis && (
         <div className="panel">
-          <h3>Architecture Summary</h3>
+          <h3>{t("runner.archSummary")}</h3>
           <p>{analysis.summary}</p>
-          <p><strong>Module graph:</strong> {analysis.module_graph_url}</p>
+          <p><strong>{t("runner.moduleGraph")}:</strong> {analysis.module_graph_url}</p>
           <ul>
             {analysis.hotspots.map((hotspot) => (
               <li key={`${hotspot.file}-${hotspot.reason}`}>
@@ -190,9 +205,9 @@ export default function RunPanel() {
       )}
       {proposal && (
         <div className="panel">
-          <h3>Proposal</h3>
-          <p><strong>Title:</strong> {proposal.title}</p>
-          <p><strong>Risk:</strong> {proposal.risk}</p>
+          <h3>{t("runner.proposalTitle")}</h3>
+          <p><strong>{t("runner.titleLabel")}:</strong> {proposal.title}</p>
+          <p><strong>{t("runner.risk")}:</strong> {proposal.risk}</p>
           <ul>
             {proposal.files.map((file) => (
               <li key={file}><code>{file}</code></li>
@@ -202,9 +217,9 @@ export default function RunPanel() {
       )}
       {prResult && (
         <div className="panel">
-          <h3>PR Result</h3>
-          <p><strong>Status:</strong> {prResult.status}</p>
-          <p><strong>URL:</strong> {prResult.pr_url}</p>
+          <h3>{t("runner.prResult")}</h3>
+          <p><strong>{t("runner.status")}:</strong> {prResult.status}</p>
+          <p><strong>{t("runner.url")}:</strong> {prResult.pr_url}</p>
         </div>
       )}
     </div>

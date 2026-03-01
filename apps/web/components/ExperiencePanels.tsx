@@ -2,10 +2,13 @@
 
 import { useMemo, useState } from "react"
 
+import { useI18n } from "./I18nProvider"
+
 type Message = { role: "user" | "assistant"; text: string }
 type DocItem = { name: string; size: number }
 
 export default function ExperiencePanels() {
+  const { t } = useI18n()
   const [messages, setMessages] = useState<Message[]>([
     { role: "assistant", text: "Ready. Ask about architecture, hotspots, or risk." }
   ])
@@ -39,11 +42,11 @@ export default function ExperiencePanels() {
 
   return (
     <section className="card">
-      <h2>RAG Workspace</h2>
-      <p>Prototype UI for chat, document ingestion, and answer comparison.</p>
+      <h2>{t("workspace.title")}</h2>
+      <p>{t("workspace.subtitle")}</p>
       <div className="workspace-grid">
         <div className="panel">
-          <h3>Chat</h3>
+          <h3>{t("workspace.chat")}</h3>
           <div className="chat-box">
             {messages.map((message, index) => (
               <p key={`${message.role}-${index}`} className={`msg ${message.role}`}>
@@ -54,19 +57,19 @@ export default function ExperiencePanels() {
           <div className="row">
             <input
               className="input"
-              placeholder="Ask: why this refactor?"
+              placeholder={t("workspace.askPlaceholder")}
               value={input}
               onChange={(e) => setInput(e.target.value)}
             />
-            <button className="button" onClick={sendMessage}>Send</button>
+            <button className="button" onClick={sendMessage}>{t("workspace.send")}</button>
           </div>
         </div>
 
         <div className="panel">
-          <h3>Documents</h3>
+          <h3>{t("workspace.documents")}</h3>
           <input type="file" multiple onChange={(e) => onUpload(e.target.files)} />
           <ul>
-            {docs.length === 0 && <li>No files uploaded yet</li>}
+            {docs.length === 0 && <li>{t("workspace.noFiles")}</li>}
             {docs.map((doc, index) => (
               <li key={`${doc.name}-${index}`}>
                 <code>{doc.name}</code> ({doc.size} bytes)
@@ -76,20 +79,20 @@ export default function ExperiencePanels() {
         </div>
 
         <div className="panel">
-          <h3>RAG Result</h3>
-          <p><strong>Top module:</strong> <code>{summary.topModule}</code></p>
-          <p><strong>Confidence:</strong> {summary.confidence}</p>
-          <p><strong>Risk:</strong> {summary.risk}</p>
+          <h3>{t("workspace.result")}</h3>
+          <p><strong>{t("workspace.topModule")}:</strong> <code>{summary.topModule}</code></p>
+          <p><strong>{t("workspace.confidence")}:</strong> {summary.confidence}</p>
+          <p><strong>{t("runner.risk")}:</strong> {summary.risk}</p>
         </div>
 
         <div className="panel">
-          <h3>Compare Answers</h3>
+          <h3>{t("workspace.compare")}</h3>
           <table className="compare-table">
             <thead>
               <tr>
-                <th>Model</th>
-                <th>Latency</th>
-                <th>Hallucination Risk</th>
+                <th>{t("workspace.model")}</th>
+                <th>{t("workspace.latency")}</th>
+                <th>{t("workspace.hRisk")}</th>
               </tr>
             </thead>
             <tbody>
