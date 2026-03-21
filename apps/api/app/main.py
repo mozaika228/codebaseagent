@@ -14,26 +14,50 @@ from .github_app import (
     is_github_app_configured,
     push_branch,
 )
+from .indexer.index_repo import index_repository
+from .llm.ollama_client import chat, embed
+from .memory.sqlite_memory import (
+    add_feedback,
+    add_message,
+    complete_task,
+    create_conversation,
+    enqueue_task,
+    init_db,
+    list_messages,
+    next_task,
+)
 from .pr_draft import write_local_pr_draft
-from .repo_ingest import RepoIngestError, ingest_repository
+from .repo_ingest import RepoIngestError, ingest_repository, install_post_commit_hook
 from .schemas import (
     AnalysisResultResponse,
     AnalysisRunRequest,
     AnalysisRunResponse,
+    ChatRequest,
+    ChatResponse,
+    FeedbackRequest,
+    FeedbackResponse,
     GithubPrRequest,
     GithubPrResponse,
     Hotspot,
+    IndexRepoRequest,
+    IndexRepoResponse,
     RefactorApplyRequest,
     RefactorApplyResponse,
     RefactorProposalRequest,
     RefactorProposalResponse,
     RepoImportRequest,
     RepoImportResponse,
+    TaskEnqueueRequest,
+    TaskEnqueueResponse,
+    TaskStatusResponse,
 )
 from .store import store
+from .vector_store.chroma_store import ChromaStore
 
-app = FastAPI(title="Codebase Agent API", version="0.1.0")
+app = FastAPI(title="Codebase Agent API", version="0.2.0")
 app.mount("/artifacts", StaticFiles(directory=ARTIFACTS_DIR), name="artifacts")
+
+init_db()
 
 
 @app.get("/health")
@@ -55,7 +79,30 @@ def import_repo(payload: RepoImportRequest) -> RepoImportResponse:
         "commit_sha": ingest_result["commit_sha"],
         "status": "completed",
     }
+
+    try:
+        install_post_commit_hook(ingest_result["path"], repo_id)
+    except Exception:
+        pass
+
+    try:
+        index_repository(repo_id, ingest_result["path"])
+    except Exception:
+        pass
+
     return RepoImportResponse(repo_id=repo_id, commit_sha=ingest_result["commit_sha"], status="completed")
+
+
+@app.post("/index/repo", response_model=IndexRepoResponse)
+def index_repo(payload: IndexRepoRequest) -> IndexRepoResponse:
+    repo = store.repos.get(payload.repo_id)
+    if not repo:
+        raise HTTPException(status_code=404, detail="repo_id not found")
+    try:
+        result = index_repository(payload.repo_id, repo["path"])
+        return IndexRepoResponse(status="completed", chunks=result.get("chunks", 0))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/analysis/run", response_model=AnalysisRunResponse)
@@ -185,3 +232,54 @@ def create_pr(payload: GithubPrRequest) -> GithubPrResponse:
     except GithubAppError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return GithubPrResponse(pr_url=pr_url, status="opened")
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat_route(payload: ChatRequest) -> ChatResponse:
+    conversation_id = payload.conversation_id or create_conversation(payload.project_id)
+    add_message(conversation_id, "user", payload.message)
+
+    store_ref = ChromaStore(collection=f"repo:{payload.project_id}")
+    query_vec = embed([payload.message])
+    results = store_ref.query(query_embeddings=query_vec, n_results=4)
+    docs = results.get("documents", [[]])[0]
+    context = "\n\n".join(docs)
+
+    messages = [
+        {"role": "system", "content": "You are a local self-hosted codebase agent. Use context when available."},
+        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {payload.message}"},
+    ]
+    answer = chat(messages)
+    add_message(conversation_id, "assistant", answer)
+    return ChatResponse(conversation_id=conversation_id, answer=answer)
+
+
+@app.post("/feedback", response_model=FeedbackResponse)
+def feedback_route(payload: FeedbackRequest) -> FeedbackResponse:
+    add_feedback(payload.project_id, payload.run_id, payload.rating, payload.reason)
+    return FeedbackResponse()
+
+
+@app.post("/tasks/enqueue", response_model=TaskEnqueueResponse)
+def enqueue_task_route(payload: TaskEnqueueRequest) -> TaskEnqueueResponse:
+    task_id = enqueue_task(payload.project_id, payload.type, payload.payload)
+    return TaskEnqueueResponse(task_id=task_id)
+
+
+@app.get("/tasks/next", response_model=TaskStatusResponse)
+def next_task_route() -> TaskStatusResponse:
+    task = next_task()
+    if not task:
+        raise HTTPException(status_code=404, detail="no queued tasks")
+    return TaskStatusResponse(task_id=task["id"], status="running", result=task)
+
+
+@app.post("/tasks/complete", response_model=TaskStatusResponse)
+def complete_task_route(payload: dict) -> TaskStatusResponse:
+    task_id = int(payload.get("task_id", 0))
+    status = payload.get("status", "completed")
+    result = payload.get("result", {})
+    if task_id <= 0:
+        raise HTTPException(status_code=400, detail="task_id required")
+    complete_task(task_id, status, result)
+    return TaskStatusResponse(task_id=task_id, status=status, result=result)

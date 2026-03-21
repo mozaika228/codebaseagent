@@ -4,7 +4,7 @@ import hashlib
 import subprocess
 from pathlib import Path
 
-from .config import REPOS_DIR
+from .config import BASE_DIR, REPOS_DIR
 
 
 class RepoIngestError(RuntimeError):
@@ -26,6 +26,23 @@ def _run_git(args: list[str], cwd: Path | None = None) -> str:
 
 def _repo_dir_name(repo_url: str) -> str:
     return hashlib.sha256(repo_url.encode("utf-8")).hexdigest()[:16]
+
+
+def install_post_commit_hook(repo_path: str, repo_id: str) -> None:
+    repo_dir = Path(repo_path)
+    hooks_dir = repo_dir / ".git" / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    hook_path = hooks_dir / "post-commit"
+    worker_path = BASE_DIR / "apps" / "worker"
+    hook = "\n".join(
+        [
+            "#!/usr/bin/env sh",
+            f"PYTHONPATH=\"{worker_path.as_posix()}\" python -m worker.index_repo --repo-id {repo_id} --api http://localhost:8000",
+            "exit 0",
+            "",
+        ]
+    )
+    hook_path.write_text(hook, encoding="utf-8")
 
 
 def ingest_repository(repo_url: str, branch: str) -> dict[str, str]:

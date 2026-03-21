@@ -136,3 +136,32 @@ This project is licensed under MIT. See `LICENSE`.
 ## Contributing
 
 See `CONTRIBUTING.md`.
+
+## Self-hosted mode (Ollama)
+
+Set environment variables for local models:
+
+```bash
+set OLLAMA_BASE_URL=http://localhost:11434
+set OLLAMA_CHAT_MODEL=llama3.1:70b
+set OLLAMA_CODE_MODEL=deepseek-coder-v2:32b
+set OLLAMA_EMBED_MODEL=nomic-embed-text
+set OLLAMA_FALLBACK_MODEL=qwen2.5:72b
+```
+
+Local vector store: Chroma (persistent). Embeddings are stored in `.data/vectorstore`.
+
+## Long-term memory
+
+Conversation history and task queue are stored in SQLite at `.data/agent.sqlite3`.
+
+Endpoints:
+
+- `POST /chat` stores messages + retrieves context from vector store
+- `POST /feedback` stores user ratings
+- `POST /tasks/enqueue` enqueues multi-step tasks
+
+## Repo indexing
+
+On import, the repo is indexed into the vector store. A `post-commit` hook is installed
+in the cloned repo to re-index on new commits.

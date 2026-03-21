@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
@@ -72,3 +72,51 @@ class GithubPrRequest(BaseModel):
 class GithubPrResponse(BaseModel):
     pr_url: str
     status: Literal["opened", "skipped", "failed"] = "opened"
+
+
+class IndexRepoRequest(BaseModel):
+    repo_id: str
+
+
+class IndexRepoResponse(BaseModel):
+    status: Literal["completed", "failed"]
+    chunks: int = 0
+
+
+class ChatRequest(BaseModel):
+    project_id: str
+    message: str
+    conversation_id: int | None = None
+
+
+class ChatResponse(BaseModel):
+    conversation_id: int
+    answer: str
+
+
+class FeedbackRequest(BaseModel):
+    project_id: str
+    rating: Literal["up", "down"]
+    run_id: str | None = None
+    reason: str | None = None
+
+
+class FeedbackResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+
+
+class TaskEnqueueRequest(BaseModel):
+    project_id: str
+    type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class TaskEnqueueResponse(BaseModel):
+    task_id: int
+    status: Literal["queued"] = "queued"
+
+
+class TaskStatusResponse(BaseModel):
+    task_id: int
+    status: str
+    result: dict[str, Any] | None = None
