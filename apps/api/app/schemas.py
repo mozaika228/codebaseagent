@@ -15,6 +15,15 @@ class RepoImportResponse(BaseModel):
     status: Literal["queued", "running", "completed", "failed"] = "queued"
 
 
+class RepoInfoResponse(BaseModel):
+    repo_id: str
+    repo_url: str
+    branch: str
+    commit_sha: str
+    status: str
+    path: str
+
+
 class AnalysisRunRequest(BaseModel):
     repo_id: str
     commit_sha: str = "HEAD"
@@ -92,6 +101,26 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     conversation_id: int
     answer: str
+
+
+class ConversationInfo(BaseModel):
+    id: int
+    created_at: str
+    updated_at: str
+
+
+class ConversationListResponse(BaseModel):
+    conversations: list[ConversationInfo] = Field(default_factory=list)
+
+
+class MessageItem(BaseModel):
+    role: str
+    content: str
+    created_at: str
+
+
+class MessageHistoryResponse(BaseModel):
+    messages: list[MessageItem] = Field(default_factory=list)
 
 
 class FeedbackRequest(BaseModel):

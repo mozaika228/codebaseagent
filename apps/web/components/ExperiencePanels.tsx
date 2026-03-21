@@ -7,6 +7,9 @@ import { useI18n } from "./I18nProvider"
 type Message = { role: "user" | "assistant"; text: string }
 type DocItem = { name: string; size: number }
 
+type ConversationInfo = { id: number; created_at: string; updated_at: string }
+type MessageItem = { role: string; content: string; created_at: string }
+
 export default function ExperiencePanels() {
   const { t } = useI18n()
   const [messages, setMessages] = useState<Message[]>([
@@ -14,6 +17,10 @@ export default function ExperiencePanels() {
   ])
   const [input, setInput] = useState("")
   const [docs, setDocs] = useState<DocItem[]>([])
+  const [projectId, setProjectId] = useState("")
+  const [conversationId, setConversationId] = useState<number | null>(null)
+  const [conversations, setConversations] = useState<ConversationInfo[]>([])
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000"
 
   const summary = useMemo(() => {
     return {
@@ -23,15 +30,41 @@ export default function ExperiencePanels() {
     }
   }, [])
 
-  function sendMessage() {
-    if (!input.trim()) return
+  async function sendMessage() {
+    if (!input.trim() || !projectId.trim()) return
     const userText = input.trim()
-    setMessages((prev) => [
-      ...prev,
-      { role: "user", text: userText },
-      { role: "assistant", text: `Draft answer: focus on ${summary.topModule} and test before merge.` }
-    ])
+    setMessages((prev) => [...prev, { role: "user", text: userText }])
     setInput("")
+
+    const res = await fetch(`${apiBase}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_id: projectId, message: userText, conversation_id: conversationId })
+    })
+    if (!res.ok) {
+      setMessages((prev) => [...prev, { role: "assistant", text: `error: ${res.status}` }])
+      return
+    }
+    const data = await res.json()
+    setConversationId(data.conversation_id)
+    setMessages((prev) => [...prev, { role: "assistant", text: data.answer }])
+  }
+
+  async function loadConversations() {
+    if (!projectId.trim()) return
+    const res = await fetch(`${apiBase}/chat/conversations?project_id=${encodeURIComponent(projectId)}`)
+    if (!res.ok) return
+    const data = await res.json()
+    setConversations(data.conversations ?? [])
+  }
+
+  async function loadHistory() {
+    if (!conversationId) return
+    const res = await fetch(`${apiBase}/chat/history?conversation_id=${conversationId}`)
+    if (!res.ok) return
+    const data = await res.json()
+    const items: MessageItem[] = data.messages ?? []
+    setMessages(items.map((item) => ({ role: item.role as Message["role"], text: item.content })))
   }
 
   function onUpload(files: FileList | null) {
@@ -47,6 +80,24 @@ export default function ExperiencePanels() {
       <div className="workspace-grid">
         <div className="panel">
           <h3>{t("workspace.chat")}</h3>
+          <div className="row">
+            <input
+              className="input"
+              placeholder="Project ID"
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+            />
+            <button className="button" onClick={loadConversations}>Load</button>
+          </div>
+          <div className="row">
+            <select className="input" value={conversationId ?? ""} onChange={(e) => setConversationId(Number(e.target.value))}>
+              <option value="">Conversation</option>
+              {conversations.map((conv) => (
+                <option key={conv.id} value={conv.id}>{`#${conv.id} ${conv.updated_at}`}</option>
+              ))}
+            </select>
+            <button className="button" onClick={loadHistory}>History</button>
+          </div>
           <div className="chat-box">
             {messages.map((message, index) => (
               <p key={`${message.role}-${index}`} className={`msg ${message.role}`}>

@@ -21,9 +21,10 @@ from .memory.sqlite_memory import (
     add_message,
     complete_task,
     create_conversation,
-    enqueue_task,
     init_db,
+    list_conversations,
     list_messages,
+    enqueue_task,
     next_task,
 )
 from .pr_draft import write_local_pr_draft
@@ -34,6 +35,7 @@ from .schemas import (
     AnalysisRunResponse,
     ChatRequest,
     ChatResponse,
+    ConversationListResponse,
     FeedbackRequest,
     FeedbackResponse,
     GithubPrRequest,
@@ -41,12 +43,14 @@ from .schemas import (
     Hotspot,
     IndexRepoRequest,
     IndexRepoResponse,
+    MessageHistoryResponse,
+    RepoImportRequest,
+    RepoImportResponse,
+    RepoInfoResponse,
     RefactorApplyRequest,
     RefactorApplyResponse,
     RefactorProposalRequest,
     RefactorProposalResponse,
-    RepoImportRequest,
-    RepoImportResponse,
     TaskEnqueueRequest,
     TaskEnqueueResponse,
     TaskStatusResponse,
@@ -91,6 +95,21 @@ def import_repo(payload: RepoImportRequest) -> RepoImportResponse:
         pass
 
     return RepoImportResponse(repo_id=repo_id, commit_sha=ingest_result["commit_sha"], status="completed")
+
+
+@app.get("/repos/{repo_id}", response_model=RepoInfoResponse)
+def get_repo(repo_id: str) -> RepoInfoResponse:
+    repo = store.repos.get(repo_id)
+    if not repo:
+        raise HTTPException(status_code=404, detail="repo_id not found")
+    return RepoInfoResponse(
+        repo_id=repo_id,
+        repo_url=repo["repo_url"],
+        branch=repo["branch"],
+        commit_sha=repo["commit_sha"],
+        status=repo["status"],
+        path=repo["path"],
+    )
 
 
 @app.post("/index/repo", response_model=IndexRepoResponse)
@@ -252,6 +271,16 @@ def chat_route(payload: ChatRequest) -> ChatResponse:
     answer = chat(messages)
     add_message(conversation_id, "assistant", answer)
     return ChatResponse(conversation_id=conversation_id, answer=answer)
+
+
+@app.get("/chat/conversations", response_model=ConversationListResponse)
+def chat_conversations(project_id: str) -> ConversationListResponse:
+    return ConversationListResponse(conversations=[*list_conversations(project_id)])
+
+
+@app.get("/chat/history", response_model=MessageHistoryResponse)
+def chat_history(conversation_id: int) -> MessageHistoryResponse:
+    return MessageHistoryResponse(messages=[*list_messages(conversation_id)])
 
 
 @app.post("/feedback", response_model=FeedbackResponse)

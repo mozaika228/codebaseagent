@@ -87,6 +87,17 @@ def create_conversation(project_id: str) -> int:
   return conv_id
 
 
+def list_conversations(project_id: str) -> list[dict[str, Any]]:
+  conn = _conn()
+  cur = conn.cursor()
+  rows = cur.execute(
+    "SELECT id, created_at, updated_at FROM conversations WHERE project_id=? ORDER BY updated_at DESC",
+    (project_id,),
+  ).fetchall()
+  conn.close()
+  return [dict(row) for row in rows]
+
+
 def add_message(conversation_id: int, role: str, content: str) -> None:
   conn = _conn()
   cur = conn.cursor()
