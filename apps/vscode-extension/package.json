@@ -1,0 +1,67 @@
+{
+  "name": "codebase-agent-vscode",
+  "displayName": "Codebase Agent",
+  "description": "Self-hosted Codebase Agent integration",
+  "version": "0.1.0",
+  "publisher": "codebase-agent",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onCommand:codebaseAgent.explainBlock",
+    "onCommand:codebaseAgent.refactorFunction"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "codebaseAgent.explainBlock",
+        "title": "Codebase Agent: Explain Selection"
+      },
+      {
+        "command": "codebaseAgent.refactorFunction",
+        "title": "Codebase Agent: Refactor Function"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "codebaseAgent.explainBlock",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "codebaseAgent.refactorFunction",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "title": "Codebase Agent",
+      "properties": {
+        "codebaseAgent.apiBase": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "Base URL for Codebase Agent API"
+        },
+        "codebaseAgent.projectId": {
+          "type": "string",
+          "default": "",
+          "description": "Repo/project id used by the agent (e.g. r_123)"
+        }
+      }
+    }
+  },
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -w -p .",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.4"
+  }
+}

@@ -165,3 +165,15 @@ Endpoints:
 
 On import, the repo is indexed into the vector store. A `post-commit` hook is installed
 in the cloned repo to re-index on new commits.
+
+## VS Code Extension
+
+Location: `apps/vscode-extension`
+
+Hotkeys:
+- `Ctrl+Shift+A` Explain selection
+- `Ctrl+Shift+R` Refactor function
+
+Configure:
+- `codebaseAgent.apiBase`
+- `codebaseAgent.projectId`
