@@ -90,6 +90,8 @@ class IndexRepoRequest(BaseModel):
 class IndexRepoResponse(BaseModel):
     status: Literal["completed", "failed"]
     chunks: int = 0
+    graph_url: str | None = None
+    stats: dict[str, Any] = Field(default_factory=dict)
 
 
 class ChatRequest(BaseModel):
@@ -101,6 +103,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     conversation_id: int
     answer: str
+    sources: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ConversationInfo(BaseModel):

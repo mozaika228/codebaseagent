@@ -119,7 +119,12 @@ def index_repo(payload: IndexRepoRequest) -> IndexRepoResponse:
         raise HTTPException(status_code=404, detail="repo_id not found")
     try:
         result = index_repository(payload.repo_id, repo["path"])
-        return IndexRepoResponse(status="completed", chunks=result.get("chunks", 0))
+        return IndexRepoResponse(
+            status="completed",
+            chunks=int(result.get("chunks", 0)),
+            graph_url=result.get("graph_url"),
+            stats=result.get("stats", {}),
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -262,15 +267,28 @@ def chat_route(payload: ChatRequest) -> ChatResponse:
     query_vec = embed([payload.message])
     results = store_ref.query(query_embeddings=query_vec, n_results=4)
     docs = results.get("documents", [[]])[0]
-    context = "\n\n".join(docs)
+    metas = results.get("metadatas", [[]])[0]
+    distances = results.get("distances", [[]])[0]
 
+    sources = []
+    for idx, doc in enumerate(docs):
+        meta = metas[idx] if idx < len(metas) else {}
+        dist = distances[idx] if idx < len(distances) else None
+        sources.append({
+            "path": meta.get("path"),
+            "chunk": meta.get("chunk"),
+            "score": None if dist is None else float(dist),
+            "excerpt": doc[:400],
+        })
+
+    context = "\n\n".join(docs)
     messages = [
-        {"role": "system", "content": "You are a local self-hosted codebase agent. Use context when available."},
+        {"role": "system", "content": "You are a local self-hosted codebase agent. Cite sources from context."},
         {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {payload.message}"},
     ]
     answer = chat(messages)
     add_message(conversation_id, "assistant", answer)
-    return ChatResponse(conversation_id=conversation_id, answer=answer)
+    return ChatResponse(conversation_id=conversation_id, answer=answer, sources=sources)
 
 
 @app.get("/chat/conversations", response_model=ConversationListResponse)

@@ -5,6 +5,7 @@ from typing import Iterable
 
 from ..llm.ollama_client import embed
 from ..vector_store.chroma_store import ChromaStore
+from .graph_index import build_graph
 
 
 def _iter_code_files(repo_path: Path) -> list[Path]:
@@ -24,7 +25,7 @@ def _chunk_lines(text: str, max_lines: int = 200) -> Iterable[str]:
     yield "\n".join(lines[i : i + max_lines])
 
 
-def index_repository(repo_id: str, repo_path: str) -> dict[str, int]:
+def index_repository(repo_id: str, repo_path: str) -> dict[str, object]:
   root = Path(repo_path)
   store = ChromaStore(collection=f"repo:{repo_id}")
   ids: list[str] = []
@@ -44,9 +45,9 @@ def index_repository(repo_id: str, repo_path: str) -> dict[str, int]:
       ids.append(f"{rel}:{chunk_idx}")
       documents.append(chunk)
       metadatas.append({"path": rel, "chunk": str(chunk_idx)})
-  if not documents:
-    return {"chunks": 0}
+  if documents:
+    embeddings = embed(documents)
+    store.add_documents(ids=ids, embeddings=embeddings, metadatas=metadatas, documents=documents)
 
-  embeddings = embed(documents)
-  store.add_documents(ids=ids, embeddings=embeddings, metadatas=metadatas, documents=documents)
-  return {"chunks": len(ids)}
+  graph_meta = build_graph(repo_path, repo_id)
+  return {"chunks": len(ids), **graph_meta}
