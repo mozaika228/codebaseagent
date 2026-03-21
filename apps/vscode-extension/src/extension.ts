@@ -8,7 +8,7 @@ function getConfig() {
   }
 }
 
-async function post(apiBase: string, path: string, body: unknown) {
+async function post<T>(apiBase: string, path: string, body: unknown): Promise<T> {
   const res = await fetch(`${apiBase}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -17,7 +17,7 @@ async function post(apiBase: string, path: string, body: unknown) {
   if (!res.ok) {
     throw new Error(await res.text())
   }
-  return res.json()
+  return res.json() as Promise<T>
 }
 
 async function explainSelection() {
@@ -40,7 +40,7 @@ async function explainSelection() {
     project_id: projectId,
     message: `Explain this block:\n\n${text}`
   }
-  const data = await post(apiBase, "/chat", payload)
+  const data = await post<{ answer?: string }>(apiBase, "/chat", payload)
   vscode.window.showInformationMessage(data.answer || "No response")
 }
 
@@ -65,7 +65,7 @@ async function refactorSelection() {
     type: "refactor_pipeline",
     payload: { repo_id: projectId, hint: text }
   }
-  const data = await post(apiBase, "/tasks/enqueue", payload)
+  const data = await post<{ task_id: number }>(apiBase, "/tasks/enqueue", payload)
   vscode.window.showInformationMessage(`Task queued: ${data.task_id}`)
 }
 
