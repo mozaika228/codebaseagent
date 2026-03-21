@@ -8,6 +8,11 @@ npm install
 npm run build
 ```
 
+## Run / Debug
+
+- If F5 changes brightness on your laptop, use `Fn+F5` or start debug from `Run and Debug` panel.
+- Alternative: `Ctrl+Shift+D` then click `Start Debugging`.
+
 ## Settings
 
 - `codebaseAgent.apiBase` (default: http://localhost:8000)
