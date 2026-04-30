@@ -177,3 +177,27 @@ Hotkeys:
 Configure:
 - `codebaseAgent.apiBase`
 - `codebaseAgent.projectId`
+
+
+## Execution Sandbox
+
+Autonomous test-runs execute inside one container per run with hard limits:
+
+- CPU limit: `SANDBOX_CPU_LIMIT` (default `1.5`)
+- RAM limit: `SANDBOX_MEMORY_LIMIT` (default `2g`)
+- PID limit: `SANDBOX_PIDS_LIMIT` (default `256`)
+- Timeout: `SANDBOX_TIMEOUT_SECONDS` (default `900`)
+- Network: `SANDBOX_NETWORK_MODE` (default `none`)
+- Root FS: read-only with tmpfs `/tmp`
+
+Deterministic settings in sandbox:
+
+- `PYTHONHASHSEED=0`
+- `TZ=UTC`
+- `LC_ALL=C.UTF-8`
+- Python: pinned install via `requirements-lock.txt` if present
+- Node: `npm ci` if lockfile exists
+
+Worker switch:
+
+- `SANDBOX_REQUIRED=true` (default) blocks PR if sandbox constraints are not met.

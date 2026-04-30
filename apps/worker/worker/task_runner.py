@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +8,10 @@ from typing import Any
 
 import requests
 
+from .sandbox_runner import run_tests_in_sandbox
+
 API_BASE = os.getenv("CODEBASE_AGENT_API", "http://localhost:8000")
+SANDBOX_REQUIRED = os.getenv("SANDBOX_REQUIRED", "true").lower() in {"1", "true", "yes"}
 
 
 @dataclass
@@ -48,32 +50,20 @@ def _complete_task(task_id: int, status: str, result: dict[str, Any]) -> None:
   requests.post(f"{API_BASE}/tasks/complete", json={"task_id": task_id, "status": status, "result": result}, timeout=60)
 
 
-def _run_tests(repo_path: Path) -> dict[str, Any]:
-  if (repo_path / "pyproject.toml").exists() or (repo_path / "pytest.ini").exists() or (repo_path / "requirements.txt").exists():
-    cmd = ["pytest", "-q"]
-  elif (repo_path / "package.json").exists():
-    cmd = ["npm", "test"]
-  else:
-    return {"status": "skipped", "reason": "no test runner detected"}
-
-  proc = subprocess.run(cmd, cwd=str(repo_path), capture_output=True, text=True, timeout=600)
-  return {
-    "status": "passed" if proc.returncode == 0 else "failed",
-    "stdout": proc.stdout[-2000:],
-    "stderr": proc.stderr[-2000:],
-  }
-
-
 def _run_refactor_pipeline(task: Task) -> dict[str, Any]:
   repo_id = task.payload.get("repo_id", task.project_id)
   analysis = _api_post("/analysis/run", {"repo_id": repo_id, "commit_sha": "HEAD"})
   proposal = _api_post("/refactors/propose", {"analysis_id": analysis["analysis_id"], "scope": ["src/**"], "max_changes": 5})
-  apply_res = _api_post("/refactors/apply", {"proposal_id": proposal["proposal_id"], "run_tests": True})
+  apply_res = _api_post("/refactors/apply", {"proposal_id": proposal["proposal_id"], "run_tests": False})
 
   repo_info = _api_get(f"/repos/{repo_id}")
-  tests = _run_tests(Path(repo_info["path"]))
+  tests = run_tests_in_sandbox(repo_info["path"])
+
   if tests["status"] == "failed":
-    return {"status": "failed", "reason": "tests_failed", "tests": tests}
+    return {"status": "failed", "reason": "tests_failed", "tests": tests, "analysis": analysis, "proposal": proposal, "apply": apply_res}
+
+  if SANDBOX_REQUIRED and not tests.get("sandbox"):
+    return {"status": "failed", "reason": "sandbox_required", "tests": tests}
 
   pr = _api_post("/github/pr", {
     "run_id": apply_res["run_id"],
