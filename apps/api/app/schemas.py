@@ -56,6 +56,9 @@ class RefactorProposalResponse(BaseModel):
     proposal_id: str
     title: str
     risk: Literal["low", "medium", "high"]
+    risk_score: float
+    risk_class: Literal["safe", "review-required", "blocked"]
+    citations: list[dict[str, Any]] = Field(default_factory=list)
     files: list[str]
 
 
@@ -67,6 +70,7 @@ class RefactorApplyRequest(BaseModel):
 class RefactorApplyResponse(BaseModel):
     run_id: str
     status: Literal["queued", "running", "completed", "failed"] = "running"
+    tests_passed: bool = False
 
 
 class GithubPrRequest(BaseModel):

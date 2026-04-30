@@ -57,6 +57,28 @@ def create_refactor_commit(
     return {"commit_sha": commit_sha, "head_branch": head_branch}
 
 
+def rollback_branch(repo_path: str, base_branch: str, head_branch: str) -> None:
+    repo_dir = Path(repo_path)
+    if _has_remote(repo_dir, "origin"):
+        _run_git(["fetch", "origin", base_branch], cwd=repo_dir)
+        _run_git(["checkout", base_branch], cwd=repo_dir)
+        _run_git(["reset", "--hard", f"origin/{base_branch}"], cwd=repo_dir)
+    else:
+        _run_git(["checkout", base_branch], cwd=repo_dir)
+    _run_git_allow_fail(["branch", "-D", head_branch], cwd=repo_dir)
+
+
+def _run_git_allow_fail(args: list[str], cwd: Path) -> str:
+    proc = subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return proc.stdout.strip()
+
+
 def _has_remote(repo_dir: Path, remote_name: str) -> bool:
     proc = subprocess.run(
         ["git", "remote", "get-url", remote_name],

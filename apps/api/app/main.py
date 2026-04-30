@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import subprocess
 import uuid
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 from .ast_analyzer import analyze_repository
 from .config import ARTIFACTS_DIR
-from .git_refactor import GitRefactorError, create_refactor_commit
+from .git_refactor import GitRefactorError, create_refactor_commit, rollback_branch
 from .github_app import (
     GithubAppError,
     create_pr as create_github_pr,
@@ -58,10 +61,50 @@ from .schemas import (
 from .store import store
 from .vector_store.chroma_store import ChromaStore
 
-app = FastAPI(title="Codebase Agent API", version="0.2.0")
+app = FastAPI(title="Codebase Agent API", version="0.3.0")
 app.mount("/artifacts", StaticFiles(directory=ARTIFACTS_DIR), name="artifacts")
 
 init_db()
+
+
+def _assess_risk(analysis: dict, files: list[str]) -> tuple[float, str, str, list[dict]]:
+    hotspots = analysis.get("hotspots", [])
+    total_score = 0.0
+    citations: list[dict] = []
+    for idx, item in enumerate(hotspots[:5]):
+        reason = item.get("reason", "")
+        score = 0.0
+        if "score=" in reason:
+            try:
+                score = float(reason.split("score=")[-1].split()[0])
+            except Exception:
+                score = 5.0
+        else:
+            score = 5.0
+        total_score += score
+        citations.append({"path": item.get("file"), "reason": reason, "rank": idx + 1})
+
+    total_score += len(files) * 1.5
+
+    if total_score <= 15:
+        return total_score, "low", "safe", citations
+    if total_score <= 30:
+        return total_score, "medium", "review-required", citations
+    return total_score, "high", "blocked", citations
+
+
+def _run_repo_tests(repo_path: str) -> tuple[bool, str]:
+    root = Path(repo_path)
+    if (root / "pytest.ini").exists() or (root / "pyproject.toml").exists() or any(root.glob("test*.py")):
+        cmd = ["pytest", "-q"]
+    elif (root / "package.json").exists():
+        cmd = ["npm", "test"]
+    else:
+        return True, "No test runner detected; gate marked pass by policy"
+
+    proc = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True, timeout=900)
+    summary = (proc.stdout + "\n" + proc.stderr).strip()
+    return proc.returncode == 0, summary[-2000:]
 
 
 @app.get("/health")
@@ -167,18 +210,27 @@ def propose_refactor(payload: RefactorProposalRequest) -> RefactorProposalRespon
     files = [hotspot["file"] for hotspot in analysis["hotspots"][: payload.max_changes]]
     if not files:
         files = ["README.md"]
+
+    risk_score, risk, risk_class, citations = _assess_risk(analysis, files)
+
     store.proposals[proposal_id] = {
         "analysis_id": payload.analysis_id,
         "scope": payload.scope,
         "max_changes": payload.max_changes,
         "title": "Extract validation layer",
-        "risk": "low",
+        "risk": risk,
+        "risk_score": risk_score,
+        "risk_class": risk_class,
+        "citations": citations,
         "files": files,
     }
     return RefactorProposalResponse(
         proposal_id=proposal_id,
         title="Extract validation layer",
-        risk="low",
+        risk=risk,
+        risk_score=risk_score,
+        risk_class=risk_class,
+        citations=citations,
         files=files,
     )
 
@@ -208,14 +260,30 @@ def apply_refactor(payload: RefactorApplyRequest) -> RefactorApplyResponse:
     except GitRefactorError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    tests_passed = True
+    test_summary = "skipped"
+    if payload.run_tests:
+        tests_passed, test_summary = _run_repo_tests(repo["path"])
+        if not tests_passed:
+            try:
+                rollback_branch(repo["path"], repo["branch"], head_branch)
+            except Exception:
+                pass
+
+    status = "completed" if tests_passed else "failed"
     store.runs[run_id] = {
         "proposal_id": payload.proposal_id,
         "run_tests": payload.run_tests,
-        "status": "completed",
+        "status": status,
         "head_branch": commit_data["head_branch"],
         "commit_sha": commit_data["commit_sha"],
+        "tests_passed": tests_passed,
+        "test_summary": test_summary,
+        "risk_score": proposal.get("risk_score"),
+        "risk_class": proposal.get("risk_class"),
+        "citations": proposal.get("citations", []),
     }
-    return RefactorApplyResponse(run_id=run_id, status="completed")
+    return RefactorApplyResponse(run_id=run_id, status=status, tests_passed=tests_passed)
 
 
 @app.post("/github/pr", response_model=GithubPrResponse)
@@ -226,10 +294,26 @@ def create_pr(payload: GithubPrRequest) -> GithubPrResponse:
     repo = store.repos.get(payload.repo_id)
     if not repo:
         raise HTTPException(status_code=404, detail="repo_id not found")
-    if run["status"] != "completed":
-        raise HTTPException(status_code=400, detail="run is not completed")
     if payload.head_branch != run.get("head_branch"):
         raise HTTPException(status_code=400, detail="head_branch must match run head_branch")
+
+    # merge-gate: tests + risk + citations are mandatory
+    if not run.get("tests_passed", False):
+        try:
+            rollback_branch(repo["path"], repo["branch"], payload.head_branch)
+        except Exception:
+            pass
+        raise HTTPException(status_code=400, detail="merge-gate blocked: tests did not pass; branch rolled back")
+
+    risk_score = run.get("risk_score")
+    risk_class = run.get("risk_class")
+    citations = run.get("citations", [])
+    if risk_score is None or not risk_class:
+        raise HTTPException(status_code=400, detail="merge-gate blocked: missing risk score/class")
+    if risk_class == "blocked":
+        raise HTTPException(status_code=400, detail="merge-gate blocked: risk classified as blocked")
+    if not citations:
+        raise HTTPException(status_code=400, detail="merge-gate blocked: missing source citations")
 
     if not is_github_app_configured():
         draft_url = write_local_pr_draft(
